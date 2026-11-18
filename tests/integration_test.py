@@ -23,6 +23,9 @@ class TestModelAppIntegration(unittest.TestCase):
 		}
 
 		response = self.client.post('/', data=form_data)
+		self.assertEqual(response.status_code, 200)
+		self.assertIn(b'The weather is:', response.data)
+		self.assertIn(b'Prediction time:', response.data)
 	
 		# Complete below
 		# Ensure that the result page (response.data) should include a weather prediction
@@ -37,6 +40,7 @@ class TestModelAppIntegration(unittest.TestCase):
 			'misty', 'rainy', 'smokey', 'thunderstorm'
 		]
 		found = any(weather in html_text for weather in valid_classes)
+		self.assertTrue(found, "Prediction is not a valid weather classification")
 		
 		# Ensure that classification is in valid classes, provide an error message if not.
 		
