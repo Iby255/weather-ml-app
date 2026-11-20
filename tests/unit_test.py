@@ -44,7 +44,7 @@ class TestUnit(unittest.TestCase):
 
 	def test_foggy_classification_output(self):
 
-		test_input = np.array([289.47,1015,88,2,300,0,0,0,20]).reshape(1,-1)
+		test_input = np.array([243.15, 1028, 100, 10, 60, 0, 0, 0, 80]).reshape(1,-1)
 		class_result, _ = classify_weather(test_input) 
 		
 		self.assertEqual(class_result, 'foggy')
