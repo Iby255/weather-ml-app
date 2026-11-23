@@ -1,0 +1,86 @@
+# CI workflow for the weather-ml-app Flask application.
+#
+# What it is for:
+#   It tests the app, builds the Docker image, checks that the image starts,
+#   and pushes the image to DockerHub.
+#
+# When it runs:
+#   On every push to the main branch.
+#
+# Repo secrets it needs (Settings > Secrets and variables > Actions):
+#   DOCKERHUB_USERNAME  - the DockerHub account name.
+#   DOCKERHUB_TOKEN     - a DockerHub access token for that account.
+#
+# Image name and version:
+#   They come from the "image:" line of k8s/deployment.yaml.
+#   Without that line the default <DockerHub account>/weather-ml-app:v1 is used.
+#   The version is written in one place only.
+#   CD.yml deploys the same file, so CI and CD always use the same image.
+
+name: CI
+
+# Step (a): detect changes to the repository.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      # Python 3.9 is the same version as the base image in the Dockerfile.
+      # The tests then run on the same version as the container.
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: (b) Install Flask and dependencies
+        run: pip install -r requirements.txt
+
+      # The tests run from the repo root with "-m unittest".
+      # This way "from app import app" and the relative path model/model.pkl both work.
+      - name: (c) Smoke test
+        run: python -m unittest tests/smoke_test.py
+
+      - name: (c) Unit test
+        run: python -m unittest tests/unit_test.py
+
+      - name: (c) Integration test
+        run: python -m unittest tests/integration_test.py
+
+      # When k8s/deployment.yaml has no image line yet, the default image is used:
+      # <DockerHub account>/weather-ml-app:v1.
+      # ${IMAGE:-$DEFAULT_IMAGE} means: use IMAGE, or DEFAULT_IMAGE when IMAGE is empty.
+      # This way CI can build and push before the Kubernetes files are written.
+      - name: Read image name and version from k8s/deployment.yaml
+        env:
+          DEFAULT_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/weather-ml-app:v1
+        run: |
+          IMAGE=$(grep -m1 'image:' k8s/deployment.yaml | awk '{print $2}')
+          IMAGE="${IMAGE:-$DEFAULT_IMAGE}"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          echo "Image to build: $IMAGE"
+
+      - name: (d) Build Docker image
+        run: docker build -t "$IMAGE" .
+
+      # The command runs inside the container.
+      # It waits 5 seconds for Flask to start, then asks the app for its home page.
+      # A non-200 answer or no answer fails the step.
+      - name: "(e) Build test: start a container and run a command inside it"
+        run: |
+          docker run -d --name ci-build-test "$IMAGE"
+          docker exec ci-build-test python -c "import time, urllib.request; time.sleep(5); print('HTTP', urllib.request.urlopen('http://localhost:5000/').status)"
+
+      - name: Log in to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: (f) Push image to DockerHub
+        run: docker push "$IMAGE"
