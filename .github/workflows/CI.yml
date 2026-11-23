@@ -26,7 +26,8 @@ on:
 
 jobs:
   build-test-push:
-    runs-on: ubuntu-latest
+    # Pinned to 24.04: ubuntu-latest is now 26.04, which has no Python 3.9 build.
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out the code
         uses: actions/checkout@v4
