@@ -1,0 +1,60 @@
+# CD workflow for the weather-ml-app Flask application.
+#
+# What it is for:
+#   Step (g): deploy builds that passed CI to Kubernetes (minikube)
+#   on the Production Server, without disrupting the service.
+#
+# When it runs:
+#   After the workflow called "CI" finishes (see Lab 8, workflow_run).
+#   The job runs only when CI finished with success, so a failed build
+#   is never deployed.
+#
+# Where it runs:
+#   On the self-hosted runner installed on the Production Server.
+#   kubectl and minikube must be installed there, and minikube must be
+#   running before a deploy ("minikube start" after every server start).
+#
+# What it deploys:
+#   The files in k8s/ (deployment.yaml and service.yaml).
+#   The image name and version are in the "image:" line of
+#   k8s/deployment.yaml, the same line CI.yml builds and pushes.
+#
+# Why the service is not disrupted:
+#   kubectl apply changes the image in the Deployment. Kubernetes then
+#   does a rolling update: it starts new pods and removes old ones one by
+#   one, so some pods keep serving the app all the time. This needs more
+#   than one replica in k8s/deployment.yaml (Task 3 e).
+
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  deploy:
+    # Deploy only builds that passed CI.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: self-hosted
+    steps:
+      # Check out exactly the commit that CI tested and built,
+      # not whatever is newest on main at this moment.
+      - name: Check out the commit that passed CI
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Show the image to deploy
+        run: grep -m1 'image:' k8s/deployment.yaml
+
+      - name: (g) Apply the Kubernetes files
+        run: kubectl apply -f k8s/
+
+      # Waits until all new pods are ready.
+      # The step fails if the rolling update does not finish in 3 minutes.
+      - name: (g) Wait for the rolling update to finish
+        run: kubectl rollout status -f k8s/deployment.yaml --timeout=180s
+
+      - name: Show the running pods and the service
+        run: kubectl get pods,services -o wide
