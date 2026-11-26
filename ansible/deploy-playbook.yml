@@ -1,0 +1,29 @@
+- name: A playbook to deploy the weather app to Kubernetes
+  hosts: localhost
+  user: ubuntu
+  become: no
+
+  vars:
+    k8sPath: /home/ubuntu/weather-ml-app/k8s/
+
+  tasks:
+
+  - name: 1. Deploy the image from DockerHub (deployment.yaml)
+    shell:
+      cmd: kubectl apply -f "{{ k8sPath }}deployment.yaml"
+
+  - name: 2. Create the Service (service.yaml)
+    shell:
+      cmd: kubectl apply -f "{{ k8sPath }}service.yaml"
+
+  - name: 3. Scale the Deployment for rolling updates
+    shell:
+      cmd: kubectl scale deployment weather-ml-app --replicas=2
+
+  - name: 4. Wait until all pods are ready
+    shell:
+      cmd: kubectl rollout status deployment/weather-ml-app --timeout=180s
+
+  - name: 5. Check the Deployment and the Service
+    shell:
+      cmd: kubectl get deployment,service -o wide
